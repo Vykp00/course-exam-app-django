@@ -1,5 +1,21 @@
+from ctypes import pointer
+from email.policy import default
+from importlib.resources import contents
+from optparse import Option
+from os import name
+from random import choices
+from secrets import choice
+from select import select
 import sys
+from tabnanny import verbose
+from typing import TYPE_CHECKING
+from typing_extensions import Self
+from unittest.util import _MAX_LENGTH
+from wsgiref import validate
+from wsgiref.validate import validator
 from django.utils.timezone import now
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
 try:
     from django.db import models
 except Exception:
@@ -52,9 +68,10 @@ class Learner(models.Model):
                self.occupation
 
 
+
 # Course model
 class Course(models.Model):
-    name = models.CharField(null=False, max_length=30, default='online course')
+    name = models.CharField(null=False, max_length=70, default='online course')
     image = models.ImageField(upload_to='course_images/')
     description = models.CharField(max_length=1000)
     pub_date = models.DateField(null=True)
@@ -75,6 +92,9 @@ class Lesson(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     content = models.TextField()
 
+    def __str__(self):
+        return "Title: " + self.title
+
 
 # Enrollment model
 # <HINT> Once a user enrolled a class, an enrollment entry should be created between the user and course
@@ -93,7 +113,6 @@ class Enrollment(models.Model):
     date_enrolled = models.DateField(default=now)
     mode = models.CharField(max_length=5, choices=COURSE_MODES, default=AUDIT)
     rating = models.FloatField(default=5.0)
-
 
 # <HINT> Create a Question Model with:
     # Used to persist question content for a course
@@ -114,6 +133,46 @@ class Enrollment(models.Model):
     #        return True
     #    else:
     #        return False
+    
+class Question(models.Model):
+    class Meta:
+        verbose_name = _("Question")
+        verbose_name_plural = _("Questions")
+        ordering = ['id']
+
+    lesson = models.ForeignKey(Course, on_delete=models.CASCADE)
+    question_text = models.CharField(max_length=200, verbose_name=_("Title"))
+    mark = models.IntegerField(default=1)
+
+    def get_choice(self):
+        choices = self.choice_set.filter(question=self)
+        return choices
+
+    def is_get_score(self, selected_ids):
+        all_answers = self.choice_set.filter(is_correct=True).count()
+        selected_correct = self.choice_set.filter(is_correct=True, id__in=selected_ids).count()
+        if all_answers == selected_correct:
+            return True
+        else:
+            return False
+
+    def __str__(self):
+        return self.question_text
+
+    #def is_get_score(self, selected_ids):
+        #all_answers = self.choice_set.filter(is_correct=True).count()
+        #selected_correct = self.choice_set.filter(is_correct=True, id__in=selected_ids).count()
+        #if all_answers == selected_correct:
+        #    return True
+        #else:
+        #    return False
+    
+    # Validate the score match match number of correct answer
+    #def get_choice_mark(self):
+      #  all_correct = self.prefetch_related(Prefetch('choice_set')).get().choice_set.filter(is_correct=True).count()
+       # print(all_correct)
+       # total_mark = self.mark
+       # return total_mark / all_correct
 
 
 #  <HINT> Create a Choice Model with:
@@ -122,12 +181,28 @@ class Enrollment(models.Model):
     # Choice content
     # Indicate if this choice of the question is a correct one or not
     # Other fields and methods you would like to design
-# class Choice(models.Model):
+class Choice(models.Model):
+    class Meta:
+        verbose_name = _("Choice")
+        verbose_name_plural = _("Choices")
+        ordering = ['id']
+
+    question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    choice_text = models.CharField(max_length=225, verbose_name=_("Answer Text"))
+    is_correct = models.BooleanField(default=False)
+    #Update option: Give point for eacher corrected choices based on question's mark
+    def __str__(self):
+        return self.choice_text
 
 # <HINT> The submission model
 # One enrollment could have multiple submission
 # One submission could have multiple choices
 # One choice could belong to multiple submissions
+class Submission(models.Model):
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE)
+    choices = models.ManyToManyField(Choice)
+    questions = models.ManyToManyField(Question)
+
 #class Submission(models.Model):
 #    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE)
 #    chocies = models.ManyToManyField(Choice)
